@@ -5,6 +5,16 @@ import psycopg2
 import os
 import requests
 from dotenv import load_dotenv
+import logging
+
+# Configure logging with more details and proper format
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
+
+logger = logging.getLogger(__name__)
 
 # Load environment variables from .env
 load_dotenv()
@@ -19,9 +29,11 @@ DATABASE_URL = os.getenv("DATABASE_URL")
 try:
     conn = psycopg2.connect(DATABASE_URL)
     cursor = conn.cursor()
-    print("✅ Database connection successful!")
+    logger.info("✅ Database connection successful!")
 except Exception as e:
-    print(f"❌ Failed to connect: {e}")
+    logger.error(f"❌ Failed to connect: {e}")
+    # Add this line to see detailed error
+    raise e
 
 app = FastAPI()
 auth_scheme = HTTPBearer()  # Middleware to handle authentication tokens
@@ -48,8 +60,10 @@ def create_workout(workout: Workout):
         cursor.execute("INSERT INTO workouts (name, duration) VALUES (%s, %s) RETURNING id", (workout.name, workout.duration))
         workout_id = cursor.fetchone()[0]
         conn.commit()
+        logger.info(f"Created workout with ID: {workout_id}")
         return {"message": "Workout added successfully", "id": workout_id}
     except Exception as e:
+        logger.error(f"Error creating workout: {e}")
         return {"error": str(e)}
 
 @app.get("/workouts")
