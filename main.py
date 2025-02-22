@@ -1,44 +1,45 @@
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
-import sqlite3
+import psycopg2
+from dotenv import load_dotenv
+import os
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    # Setup
-    conn = get_db_connection()
-    conn.execute("CREATE TABLE IF NOT EXISTS workouts (id INTEGER PRIMARY KEY, name TEXT, duration INTEGER)")
-    conn.close()
-    yield
+# Load environment variables from .env
+load_dotenv()
 
-app = FastAPI(lifespan=lifespan)
+# Connect to Supabase PostgreSQL
+DATABASE_URL = os.getenv("DATABASE_URL")
 
-# Database Setup
-def get_db_connection():
-    conn = sqlite3.connect('workouts.db')
-    conn.row_factory = sqlite3.Row
-    return conn
+try:
+    conn = psycopg2.connect(DATABASE_URL)
+    cursor = conn.cursor()
+    print("✅ Database connection successful!")
+except Exception as e:
+    print(f"❌ Failed to connect: {e}")
+
+app = FastAPI()
 
 # Models
 class Workout(BaseModel):
     name: str
     duration: int # in minutes
 
-@app.post('/workouts')
+@app.post("/workouts")
 def create_workout(workout: Workout):
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute("INSERT INTO workouts (name, duration) VALUES (?,?)", (workout.name, workout.duration))
-    conn.commit()
-    conn.close()
-    return {"message": "Workout added successfully"}
+    try:
+        cursor.execute("INSERT INTO workouts (name, duration) VALUES (%s, %s) RETURNING id", (workout.name, workout.duration))
+        workout_id = cursor.fetchone()[0]
+        conn.commit()
+        return {"message": "Workout added successfully", "id": workout_id}
+    except Exception as e:
+        return {"error": str(e)}
 
 @app.get("/workouts")
 def get_workouts():
-    conn = get_db_connection()
-    workouts = conn.execute("SELECT * FROM workouts").fetchall()
-    conn.close()
-    return {"workouts": [dict(workout) for workout in workouts]}
+    cursor.execute("SELECT * FROM workouts")
+    workouts = cursor.fetchall()
+    return {"workouts": [{"id": w[0], "name": w[1], "duration": w[2]} for w in workouts]}
 
 @app.get("/")
 def read_root():
