@@ -1,12 +1,17 @@
-from contextlib import asynccontextmanager
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, Depends,HTTPException
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel
 import psycopg2
-from dotenv import load_dotenv
 import os
+import requests
+from dotenv import load_dotenv
 
 # Load environment variables from .env
 load_dotenv()
+
+# Supabase credentials
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_ANON_KEY = os.getenv("SUPABASE_ANON_KEY")
 
 # Connect to Supabase PostgreSQL
 DATABASE_URL = os.getenv("DATABASE_URL")
@@ -19,11 +24,23 @@ except Exception as e:
     print(f"❌ Failed to connect: {e}")
 
 app = FastAPI()
+auth_scheme = HTTPBearer()  # Middleware to handle authentication tokens
 
 # Models
 class Workout(BaseModel):
     name: str
     duration: int # in minutes
+
+# Function to verify JWT token from Supabase
+def verify_token(credentials: HTTPAuthorizationCredentials = Depends(auth_scheme)):
+    token = credentials.credentials
+    headers = {"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}"}
+    response = requests.get(f"{SUPABASE_URL}/auth/v1/user", headers=headers)
+
+    if response.status_code != 200:
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
+
+    return response.json() # Returns user info
 
 @app.post("/workouts")
 def create_workout(workout: Workout):
